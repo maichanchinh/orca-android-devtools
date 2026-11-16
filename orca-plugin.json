@@ -1,23 +1,37 @@
 {
+  "$schema": "https://raw.githubusercontent.com/stablyai/orca/main/docs/schemas/plugins/orca-plugin.v2.schema.json",
   "manifestVersion": 2,
   "id": "android-devtools",
   "name": "Android Devtools",
   "version": "1.0.0",
   "description": "Run Android Gradle variants on connected devices from Orca or the Node CLI.",
+  "repository": "https://github.com/maichanchinh/orca-android-devtools.git",
+  "license": "MIT",
+  "icon": "images/icon.png",
   "cover": {
-    "path": "cover.jpg",
+    "path": "images/cover.jpg",
     "alt": "Generated dark green Android Devtools promotional artwork with a phone mockup and an Android build and run panel"
   },
   "screenshots": [
     {
-      "path": "screenshots/android-devtools-dark.png",
-      "alt": "Android Devtools panel preview showing a detected sample Android project, connected Pixel device, Debug and Release choices, and Run button",
-      "caption": "Panel preview with a sample project and connected device",
+      "path": "images/android-devtools-dark.png",
+      "alt": "Orca-rendered Android Devtools panel preview with a sample Android project, connected Pixel device, Debug and Release choices, and Run button",
+      "caption": "Orca panel capture using a sample project and device fixture",
       "theme": "dark"
+    },
+    {
+      "path": "images/android-devtools-profile-manager-mockup.jpg",
+      "alt": "Illustrative mockup of Profile manager with a premium-ads profile, URI, and a typed debug_premium_ads boolean extra",
+      "caption": "Illustrative mockup: profile and typed launch extras"
+    },
+    {
+      "path": "images/android-devtools-logs-mockup.jpg",
+      "alt": "Illustrative mockup of Android build and run output with copy, send-to-agent, and clear-log controls",
+      "caption": "Illustrative mockup: build and run logs"
     }
   ],
   "engines": {
-    "orca": ">=1.4.246"
+    "orca": ">=1.4.247"
   },
   "execution": "trusted-worker",
   "pluginApi": 1,
@@ -28,8 +42,8 @@
         "id": "android-devtools",
         "title": "Android Devtools",
         "icon": "blocks",
-        "entry": "src/panel.tsx",
-        "ui": "components"
+        "entry": "src/panel.html",
+        "ui": "html"
       }
     ],
     "commands": [

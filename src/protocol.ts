@@ -5,14 +5,17 @@ export interface OrcaWorkspace {
   kind: 'worktree' | 'folder'
   name: string
   path: string
+  branch?: string | null
   hostId?: string | null
 }
 
 declare module 'orca' {
   interface PluginRequests {
-    'android.workspaces': { output: { workspaces: OrcaWorkspace[]; focusedId: string | null; focusedName: string | null } }
+    'android.workspaces': { output: { workspaces: OrcaWorkspace[]; focusedId: string | null; focusedName: string | null; focusedBranch?: string | null } }
+    'android.devices': { input: { refresh?: boolean }; output: { devices: AndroidDevice[] } }
     'android.discover': { input: { root: string; module?: string; refresh?: boolean }; output: { project: AndroidProject; devices: AndroidDevice[]; config: ProjectConfig } }
     'android.profile.save': { input: { root: string; name: string; profile: Profile }; output: { ok: true } }
+    'android.profile.preview': { input: { root: string; name: string; profile: Profile }; output: { yaml: string } }
     'android.profile.delete': { input: { root: string; name: string }; output: { ok: true; deleted: boolean } }
     'android.run.start': { input: { root: string; profile?: string; options: Partial<RunOptions> }; output: { runId: string } }
     'android.run.cancel': { input: { runId: string }; output: { cancelled: boolean } }

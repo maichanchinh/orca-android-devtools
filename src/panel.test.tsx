@@ -67,7 +67,7 @@ test('Android panel renders an interactive device and variant runner', async () 
   await view.unmount()
 })
 
-test('focused unsupported workspace stays visible and Run disabled', async () => {
+test('focused unsupported workspace stays visible, unavailable variants and Run remain disabled', async () => {
   const host = mockHost({ requests: {
     'android.workspaces': () => ({ workspaces: [{ id: 'unsupported', kind: 'folder', name: 'Docs', path: '/workspace/docs', hostId: 'local' }], focusedId: 'unsupported', focusedName: 'Docs' }),
     'android.discover': () => ({ project: { root: '/workspace/docs', module: '', modules: [], variants: [], gradleWrapper: '', androidCli: false, supported: false, reason: 'No Gradle Android project found' }, devices: [], config: { version: 1 } })
@@ -77,12 +77,53 @@ test('focused unsupported workspace stays visible and Run disabled', async () =>
   await view.press({ label: 'Refresh project and devices' })
   await view.settled()
   assert.ok(JSON.stringify(view.tree()).includes('No Gradle Android project found'))
-  await view.press({ text: 'Release' })
   const releaseButton = findNode(view.tree(), (node) => node?.type === 'Button' && node.children?.includes('Release'))
-  assert.equal(releaseButton?.props?.disabled, false)
-  assert.equal(releaseButton?.props?.variant, 'solid')
+  assert.equal(releaseButton?.props?.disabled, true)
   const runButton = findNode(view.tree(), (node) => node?.type === 'Button' && node.children?.includes('Run'))
   assert.equal(runButton?.props?.disabled, true)
+  assert.deepEqual(view.errors, [])
+  await view.unmount()
+})
+
+test('ADB devices remain visible without an active project and offline devices cannot run', async () => {
+  const host = mockHost({ requests: {
+    'android.workspaces': () => ({ workspaces: [], focusedId: null, focusedName: null }),
+    'android.devices': () => ({ devices: [
+      { serial: 'online-1', model: 'Pixel 9', state: 'device' },
+      { serial: 'offline-1', model: 'Pixel 8', state: 'offline' },
+      { serial: 'unauthorized-1', model: 'Pixel 7', state: 'unauthorized' }
+    ] })
+  } })
+  const view = await mount(panel, { host })
+  await view.settled()
+  assert.ok(JSON.stringify(view.tree()).includes('Pixel 9'))
+  assert.ok(JSON.stringify(view.tree()).includes('offline'))
+  assert.ok(JSON.stringify(view.tree()).includes('unauthorized'))
+  const runButton = findNode(view.tree(), (node) => node?.type === 'Button' && node.children?.includes('Run'))
+  assert.equal(runButton?.props?.disabled, true)
+  assert.deepEqual(view.errors, [])
+  await view.unmount()
+})
+
+test('multiple app modules can be selected and run failure exposes actionable details', async () => {
+  const runs: unknown[] = []
+  const host = mockHost({ requests: {
+    'android.workspaces': () => ({ workspaces: [{ id: 'multi', kind: 'folder', name: 'Multi', path: '/workspace/multi', hostId: 'local' }], focusedId: 'multi', focusedName: 'Multi' }),
+    'android.discover': (input) => {
+      const module = (input as { module?: string }).module ?? ':app'
+      return { project: { root: '/workspace/multi', module, modules: [':app', ':demo'], variants: ['Debug'], applicationId: 'com.example.multi', gradleWrapper: '/workspace/multi/gradlew', androidCli: true, supported: true }, devices: [{ serial: 'online', model: 'Pixel 9', state: 'device' }], config: { version: 1 } }
+    },
+    'android.run.start': (input) => { runs.push(input); return { runId: 'failed-run' } }
+  } })
+  const view = await mount(panel, { host })
+  await view.settled()
+  await view.select({ label: 'App module' }, ':demo')
+  await view.settled()
+  await view.press({ text: 'Run' })
+  assert.equal((runs[0] as { options: { module: string } }).options.module, ':demo')
+  await view.post('android.run.changed', { runId: 'failed-run', status: 'failed', result: { status: 'failed', durationMs: 50, exitCode: 1, logs: [], error: { code: 'gradle_failed', message: 'Gradle assembleDebug failed (exit 1)' } } })
+  assert.ok(JSON.stringify(view.tree()).includes('Gradle assembleDebug failed (exit 1)'))
+  assert.ok(view.find({ text: 'Copy error' }))
   assert.deepEqual(view.errors, [])
   await view.unmount()
 })

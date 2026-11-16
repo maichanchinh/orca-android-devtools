@@ -1,6 +1,6 @@
 import type { OrcaWorkerApi } from 'orca/worker'
-import { discoverDevices, discoverProject } from './android/discovery.ts'
-import { deleteProfile, readProjectConfig, saveProfile } from './android/config.ts'
+import { discoverDevices, discoverProject, readRootProjectName } from './android/discovery.ts'
+import { deleteProfile, previewProfileYaml, readProjectConfig, saveProfile } from './android/config.ts'
 import { AsyncTtlCache, PersistentCache } from './android/cache.ts'
 import { cancelRun, executeRun } from './android/runner.ts'
 import { completeRunOptions, resolveConfig } from './android/model.ts'
@@ -37,7 +37,14 @@ export default function activate(orca: OrcaWorkerApi): void {
       orca.host.call('workspace.readContext')
     ])
     const workspaces = listed.workspaces.filter((workspace) => workspace.hostId === 'local' || workspace.hostId === null || workspace.hostId === undefined) as OrcaWorkspace[]
-    return { workspaces, focusedId: context?.workspaceId ?? null, focusedName: context?.displayName ?? null }
+    const focusedWorkspace = workspaces.find((workspace) => workspace.id === context?.workspaceId)
+      ?? workspaces.find((workspace) => workspace.name === context?.displayName)
+    return { workspaces, focusedId: context?.workspaceId ?? null, focusedName: context?.displayName ?? null, focusedBranch: context?.branch || focusedWorkspace?.branch || null }
+  })
+
+  orca.panels.handle('android.devices', async ({ refresh }: { refresh?: boolean }) => {
+    const devices = await deviceCache.get('local-adb', () => discoverDevices(process.cwd()), !!refresh)
+    return jsonSafe({ devices })
   })
 
   orca.panels.handle('android.discover', async ({ root, module, refresh }: { root: string; module?: string; refresh?: boolean }) => {
@@ -50,7 +57,9 @@ export default function activate(orca: OrcaWorkerApi): void {
         projectCache.get(projectKey, () => discoverProject(root, module), !!refresh),
         deviceCache.get('local-adb', () => discoverDevices(root), !!refresh)
       ])
-      const project = cachedProject.value
+      const cached = cachedProject.value
+      const rootProjectName = cached.rootProjectName ?? await readRootProjectName(cached.root)
+      const project = rootProjectName && !cached.rootProjectName ? { ...cached, rootProjectName } : cached
       projectSource = cachedProject.source
       const config = await readProjectConfig(project.root)
       log(orca, `discover ${root}: ${project.supported ? 'supported' : 'unsupported'}, ${devices.length} device(s), ${Date.now() - startedAt}ms; cache project=${projectSource}, devices=${refresh ? 'refreshed' : devicesWereCached ? 'hit' : 'miss'}${refresh ? ', refreshed' : ''}`)
@@ -67,6 +76,10 @@ export default function activate(orca: OrcaWorkerApi): void {
     log(orca, `saved profile '${name}' in ${root}`)
     return { ok: true as const }
   })
+
+  orca.panels.handle('android.profile.preview', async ({ root, name, profile }: { root: string; name: string; profile: Profile }) => ({
+    yaml: await previewProfileYaml(root, name, profile)
+  }))
 
   orca.panels.handle('android.profile.delete', async ({ root, name }: { root: string; name: string }) => {
     const deleted = await deleteProfile(root, name)

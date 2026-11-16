@@ -1,185 +1,130 @@
 <!doctype html>
 <html lang="en">
-  <head>
-    <meta charset="utf-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <style>
-      :root {
-        color-scheme: light dark;
-        font: 13px/1.35 system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
-        color: var(--orca-foreground);
-        background: var(--orca-background);
-        --panel-border: var(--orca-border, #30343c);
-        --panel-muted: var(--orca-muted-foreground, #a0a5b1);
-        --panel-input: var(--orca-input, #252932);
-        --panel-accent: var(--orca-accent, #282c34);
-        --panel-good: #2ad477;
-        --panel-warn: #f6c517;
-      }
-      * { box-sizing: border-box; }
-      [hidden] { display: none !important; }
-      body { margin: 0; padding: 6px; min-width: 0; background: var(--orca-background); color: var(--orca-foreground); }
-      button, input, select { font: inherit; color: inherit; }
-      button { cursor: pointer; }
-      button:disabled, input:disabled, select:disabled { cursor: default; opacity: .52; }
-      .shell { width: 100%; min-width: 0; padding: 8px; border: 1px solid var(--panel-border); border-radius: 14px; }
-      .header, .project-row, .status-row, .status-left, .project-main, .select-wrap, .extra-row, .dialog-head { display: flex; align-items: center; }
-      .header, .project-row, .status-row, .dialog-head { justify-content: space-between; }
-      .header { min-height: 30px; margin-bottom: 15px; }
-      .title { display: flex; align-items: center; gap: 6px; font-size: 14px; font-weight: 500; }
-      .icon-button { display: inline-grid; place-items: center; flex: 0 0 28px; width: 28px; height: 28px; padding: 0; border: 0; border-radius: 7px; color: var(--orca-foreground); background: transparent; }
-      .icon-button:hover:not(:disabled), .quiet-button:hover:not(:disabled) { background: var(--panel-accent); }
-      .icon-button svg, .title svg, .project-main svg, .refresh-button svg, .status-row svg, .quiet-button svg { width: 15px; height: 15px; stroke: currentColor; fill: none; stroke-width: 1.7; stroke-linecap: round; stroke-linejoin: round; }
-      .project-row { min-width: 0; gap: 6px; min-height: 28px; margin-bottom: 10px; }
-      .project-main { min-width: 0; gap: 5px; }
-      .project-main svg { flex: 0 0 13px; width: 13px; height: 13px; }
-      .project-name { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 12px; }
-      .project-tools { display: flex; align-items: center; flex: 0 0 auto; gap: 6px; }
-      .recognized { display: inline-flex; align-items: center; gap: 4px; max-width: 112px; padding: 2px 7px; border: 1px solid var(--panel-border); border-radius: 999px; white-space: nowrap; font-size: 11px; }
-      .recognized .dot { width: 8px; height: 8px; border-radius: 50%; background: var(--panel-warn); }
-      .recognized[data-supported="true"] .dot { background: var(--panel-good); }
-      .recognized[data-supported="true"] { color: var(--orca-foreground); }
-      .refresh-button { display: inline-grid; place-items: center; width: 24px; height: 24px; padding: 0; border: 0; border-radius: 6px; background: transparent; }
-      .empty-message { margin: -3px 0 8px; color: var(--panel-muted); font-size: 12px; }
-      .field { margin: 0 0 8px; }
-      .field-label { display: block; margin-bottom: 5px; font-size: 12px; }
-      .select-wrap { position: relative; }
-      .select-wrap::after { content: ""; position: absolute; right: 13px; top: 50%; width: 7px; height: 7px; border-right: 1.5px solid var(--panel-muted); border-bottom: 1.5px solid var(--panel-muted); transform: translateY(-70%) rotate(45deg); pointer-events: none; }
-      select, .text-input { width: 100%; min-width: 0; height: 34px; padding: 0 32px 0 13px; border: 1px solid var(--panel-border); border-radius: 999px; outline: none; background: transparent; }
-      select { appearance: none; }
-      select:focus, .text-input:focus { border-color: var(--orca-ring, #7c8ba8); box-shadow: 0 0 0 2px color-mix(in srgb, var(--orca-ring, #7c8ba8) 24%, transparent); }
-      .variant-field { margin-bottom: 8px; }
-      .segments { display: flex; width: 100%; height: 30px; padding: 2px; border-radius: 999px; background: transparent; }
-      .segment { flex: 1; min-width: 0; border: 0; border-radius: 999px; background: transparent; color: var(--panel-muted); }
-      .segment[aria-pressed="true"] { background: var(--panel-accent); color: var(--orca-foreground); }
-      .extra-variant { margin-top: 6px; }
-      .check-list { display: grid; gap: 6px; margin: 5px 0 9px; }
-      .check-row { display: flex; align-items: center; gap: 8px; min-height: 22px; font-size: 14px; }
-      .check-row input { appearance: none; display: grid; place-items: center; flex: 0 0 20px; width: 20px; height: 20px; margin: 0; border: 1px solid var(--panel-muted); border-radius: 50%; background: transparent; }
-      .check-row input:checked { border-color: #ededed; background: #ededed; }
-      .check-row input:checked::after { content: ""; width: 8px; height: 4px; margin-top: -2px; border-bottom: 1.7px solid #171717; border-left: 1.7px solid #171717; transform: rotate(-45deg); }
-      .check-row input:focus-visible { outline: 2px solid var(--orca-ring, #7c8ba8); outline-offset: 2px; }
-      details { margin: 0 0 7px; }
-      summary { display: flex; align-items: center; justify-content: space-between; min-height: 25px; list-style: none; cursor: pointer; font-size: 12px; }
-      summary::-webkit-details-marker { display: none; }
-      summary::after { content: ""; width: 7px; height: 7px; margin-right: 4px; border-right: 1.4px solid currentColor; border-bottom: 1.4px solid currentColor; transform: rotate(45deg) translateY(-2px); transition: transform .12s ease; }
-      details[open] summary::after { transform: rotate(225deg) translate(-1px, -1px); }
-      .details-content { display: grid; gap: 7px; padding: 8px 0; }
-      .small-button, .quiet-button { min-height: 28px; padding: 4px 9px; border: 1px solid var(--panel-border); border-radius: 7px; background: transparent; }
-      .extra-row { justify-content: space-between; gap: 6px; min-width: 0; }
-      .extra-summary { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--panel-muted); font-size: 11px; }
-      .run-button { display: flex; align-items: center; justify-content: center; gap: 8px; width: 100%; height: 36px; margin-top: 2px; border: 0; border-radius: 999px; color: #141414; background: #ededed; font-weight: 550; }
-      .run-button:hover:not(:disabled) { background: #fff; }
-      .run-button svg { width: 16px; height: 16px; stroke: currentColor; fill: none; stroke-width: 2; }
-      .status-row { min-height: 28px; margin-top: 4px; gap: 6px; }
-      .status-left { min-width: 0; gap: 6px; }
-      .status-badge { display: inline-flex; align-items: center; flex: 0 0 auto; gap: 4px; padding: 4px 8px; border-radius: 999px; background: var(--panel-accent); font-size: 11px; }
-      .status-badge svg { width: 11px; height: 11px; color: var(--panel-good); }
-      .status-text { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--panel-muted); font-size: 11px; }
-      .quiet-button { display: inline-flex; align-items: center; gap: 3px; flex: 0 0 auto; padding: 3px 2px; border: 0; color: var(--panel-muted); font-size: 11px; }
-      .quiet-button svg { width: 12px; height: 12px; }
-      .logs { max-height: 180px; overflow: auto; margin: 5px 0 0; padding: 7px; border-radius: 7px; background: var(--orca-card, #17191e); white-space: pre-wrap; overflow-wrap: anywhere; font: 10px/1.4 ui-monospace, SFMono-Regular, Menlo, monospace; }
-      .footer { margin: 9px 0 0; color: var(--panel-muted); font-size: 11px; }
-      dialog { width: min(320px, calc(100vw - 32px)); padding: 14px; border: 1px solid var(--panel-border); border-radius: 12px; color: var(--orca-foreground); background: var(--orca-background); }
-      dialog::backdrop { background: rgb(0 0 0 / 45%); }
-      .dialog-head { margin-bottom: 12px; }
-      .dialog-head strong { font-size: 13px; font-weight: 600; }
-      .dialog-actions { display: flex; justify-content: flex-end; gap: 7px; margin-top: 12px; }
-      .primary-small { border: 0; color: var(--orca-primary-foreground, #fff); background: var(--orca-primary, #333); }
-      @media (max-width: 230px) {
-        body { padding: 4px; }
-        .shell { padding: 7px; }
-        .recognized { max-width: 96px; padding-inline: 6px; }
-        .project-row { gap: 4px; }
-      }
-    </style>
-  </head>
-  <body>
-    <main class="shell" aria-label="Android Run panel">
-      <header class="header">
-        <div class="title">
-          <svg viewBox="0 0 24 24" aria-hidden="true"><rect x="6.5" y="2.8" width="11" height="18.4" rx="2.1"/><path d="M10 18.2h4"/></svg>
-          <span>Android Run</span>
-        </div>
-        <button id="manage-profiles" class="icon-button" type="button" aria-label="Manage profiles" title="Manage profiles">
-          <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 7h9M17 7h3M4 17h3M11 17h9"/><circle cx="15" cy="7" r="2"/><circle cx="9" cy="17" r="2"/></svg>
-        </button>
-      </header>
-
-      <section class="project-row" aria-label="Focused workspace">
-        <div class="project-main">
-          <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 6.5h7l2 2H21v9.8a1.7 1.7 0 0 1-1.7 1.7H4.7A1.7 1.7 0 0 1 3 18.3z"/><path d="M3 8.5h18"/></svg>
-          <span id="project-name" class="project-name">No active project</span>
-        </div>
-        <div class="project-tools">
-          <span id="recognition" class="recognized" data-supported="false"><span class="dot"></span><span id="recognition-label">Not recognized</span></span>
-          <button id="refresh" class="refresh-button" type="button" aria-label="Refresh project and devices" title="Refresh">
-            <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M20 7v5h-5M4 17v-5h5"/><path d="M6.1 9a7 7 0 0 1 11.6-2L20 12M4 12l2.3 5a7 7 0 0 0 11.6-2"/></svg>
-          </button>
-        </div>
-      </section>
-      <p id="empty-message" class="empty-message" hidden>Open an Android project workspace to enable Run.</p>
-
-      <label class="field">
-        <span class="field-label">Device</span>
-        <span class="select-wrap"><select id="device" aria-label="Device"></select></span>
-      </label>
-
-      <section class="field variant-field">
-        <span class="field-label">Variant</span>
-        <div id="variant-segments" class="segments" role="group" aria-label="Build variant">
-          <button class="segment" type="button" data-variant="debug" aria-pressed="false">Debug</button>
-          <button class="segment" type="button" data-variant="release" aria-pressed="false">Release</button>
-        </div>
-        <div id="extra-variant-wrap" class="select-wrap extra-variant" hidden><select id="extra-variant" aria-label="Other variant"></select></div>
-      </section>
-
-      <label class="field">
-        <span class="field-label">Profile</span>
-        <span class="select-wrap"><select id="profile" aria-label="Profile"></select></span>
-      </label>
-
-      <section class="check-list" aria-label="Build options">
-        <label class="check-row"><input id="build" type="checkbox" /><span>Build before Run</span></label>
-        <label class="check-row"><input id="install" type="checkbox" /><span>Install APK</span></label>
-        <label class="check-row"><input id="clear-data" type="checkbox" /><span>Clear App Data</span></label>
-      </section>
-
-      <details id="advanced">
-        <summary>Advanced Options</summary>
-        <div class="details-content">
-          <label><span class="field-label">Activity (optional)</span><input id="activity" class="text-input" type="text" placeholder="Launcher Activity" /></label>
-          <label><span class="field-label">Launch flags</span><input id="launch-flags" class="text-input" type="text" placeholder="0x10000000" /></label>
-          <label><span class="field-label">Extra type</span><span class="select-wrap"><select id="extra-type"><option>string</option><option selected>boolean</option><option>int</option><option>long</option><option>float</option><option>double</option></select></span></label>
-          <label><span class="field-label">Extra key</span><input id="extra-key" class="text-input" type="text" placeholder="debug_premium_ads" /></label>
-          <label><span class="field-label">Extra value</span><input id="extra-value" class="text-input" type="text" placeholder="true" /></label>
-          <button id="add-extra" class="small-button" type="button">Add extra</button>
-          <div id="extras-list" class="details-content" aria-label="Current intent extras"></div>
-        </div>
-      </details>
-
-      <button id="run" class="run-button" type="button" disabled>
-        <svg id="run-icon" viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="m10 8 6 4-6 4z"/></svg>
-        <span id="run-label">Run</span>
-      </button>
-
-      <footer class="status-row">
-        <div class="status-left">
-          <span class="status-badge"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="m8 12 2.5 2.5L16.5 9"/></svg><span id="status-badge">Ready</span></span>
-          <span id="status" class="status-text">Ready</span>
-        </div>
-        <button id="logs-toggle" class="quiet-button" type="button" disabled>Logs <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M13 5h6v6M19 5l-9 9"/><path d="M18 13v5a1 1 0 0 1-1 1H6a1 1 0 0 1-1-1V7a1 1 0 0 1 1-1h5"/></svg></button>
-      </footer>
-      <pre id="logs" class="logs" hidden></pre>
-      <p class="footer">Chạy cấu hình trên thiết bị Android đã chọn.</p>
-    </main>
-
-    <dialog id="profile-dialog">
-      <div class="dialog-head"><strong>Profile management</strong><button id="close-profile-dialog" class="icon-button" type="button" aria-label="Close">×</button></div>
-      <label><span class="field-label">Profile name</span><input id="profile-name" class="text-input" type="text" placeholder="Premium Ads" /></label>
-      <div class="dialog-actions"><button id="cancel-profile" class="small-button" type="button">Cancel</button><button id="save-profile" class="small-button primary-small" type="button">Save profile</button></div>
-    </dialog>
-
-    <script type="module" src="./panel.ts"></script>
-  </body>
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>Android Run</title>
+  <style>
+    :root {
+      color-scheme: light dark;
+      --canvas: var(--orca-background, #10121a);
+      --surface: var(--orca-card, #191c29);
+      --surface-raised: color-mix(in srgb, var(--surface) 78%, #252c43 22%);
+      --text: var(--orca-foreground, #eef0f8);
+      --muted: var(--orca-muted-foreground, #a7aec2);
+      --border: var(--orca-border, #39405a);
+      --input: var(--orca-input, #282d3e);
+      --purple: #8b5cf6;
+      --purple-deep: #6d35d9;
+      --green: #31d98a;
+      --red: #ff657d;
+      --radius: 12px;
+      font: 13px/1.45 var(--orca-font-family, system-ui, sans-serif);
+      color: var(--text);
+      background: var(--canvas);
+    }
+    * { box-sizing: border-box; }
+    body { margin: 0; min-width: 240px; background: radial-gradient(ellipse at 90% 0%, color-mix(in srgb, var(--purple) 10%, transparent), transparent 36%), var(--canvas); }
+    button, input, select { font: inherit; color: inherit; }
+    button { cursor: pointer; }
+    button:disabled, select:disabled, input:disabled { opacity: .48; cursor: not-allowed; }
+    button:focus-visible, input:focus-visible, select:focus-visible, summary:focus-visible { outline: 2px solid var(--orca-ring, #b49aff); outline-offset: 2px; }
+    .app { padding: 12px; max-width: 720px; margin: 0 auto; }
+    .header, .header-title, .header-actions, .section-head, .inline, .status-row, .button-row, .project-row, .profile-row, .extra-row, .log-head { display: flex; align-items: center; }
+    .header { justify-content: space-between; gap: 8px; margin-bottom: 12px; }
+    .header-title { gap: 10px; min-width: 0; }
+    .brand-icon { width: 34px; height: 34px; display: grid; place-items: center; border-radius: 9px; color: white; background: linear-gradient(145deg, #a66bff, #6330d4); box-shadow: 0 0 0 1px #a987ff66; }
+    .brand-icon svg { width: 24px; height: 24px; }
+    h1 { font-size: 17px; line-height: 1.15; margin: 0; font-weight: 720; letter-spacing: -.02em; }
+    .subtitle { font-size: 11px; color: var(--muted); margin-top: 2px; }
+    .header-actions { gap: 5px; }
+    .icon-btn, .quiet-btn, .outline-btn, .danger-btn, .primary-btn, .seg-btn, .profile-choice { border: 1px solid var(--border); background: var(--surface-raised); border-radius: 9px; color: var(--text); }
+    .icon-btn { width: 34px; height: 34px; display: inline-grid; place-items: center; padding: 0; }
+    .icon-btn:hover, .quiet-btn:hover, .outline-btn:hover { border-color: color-mix(in srgb, var(--purple) 65%, var(--border)); background: color-mix(in srgb, var(--surface-raised) 78%, var(--purple) 22%); }
+    .icon-btn svg, .btn-icon { width: 17px; height: 17px; }
+    .project-card, .card, .yaml-card, .log-card { border: 1px solid var(--border); border-radius: var(--radius); background: linear-gradient(145deg, color-mix(in srgb, var(--surface) 94%, #24233a 6%), var(--surface)); }
+    .project-card { padding: 10px; margin-bottom: 12px; }
+    .project-row { gap: 9px; min-width: 0; }
+    .project-mark { display: grid; place-items: center; width: 36px; height: 36px; border-radius: 10px; color: #80f0b6; background: #143b32; flex: none; font-size: 18px; }
+    .project-copy { min-width: 0; flex: 1; }
+    .project-name { font-weight: 700; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    .project-path { color: var(--muted); font-size: 11px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    .project-branch { display: flex; align-items: center; gap: 4px; margin-top: 2px; color: #c0a6ff; font-size: 10px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    .project-branch svg { width: 12px; height: 12px; flex: none; }
+    .badge { display: inline-flex; align-items: center; gap: 6px; padding: 4px 8px; border: 1px solid var(--border); border-radius: 999px; color: var(--muted); white-space: nowrap; font-size: 11px; }
+    .dot { width: 7px; height: 7px; border-radius: 50%; background: currentColor; }
+    .badge.success { color: var(--green); border-color: #23815e; background: #112a25; }
+    .badge.warning { color: #ffc45c; border-color: #735a2d; background: #2a2418; }
+    .badge.error { color: var(--red); border-color: #7b3345; background: #2b1921; }
+    .stack { display: grid; gap: 11px; }
+    .section { display: grid; gap: 5px; min-width: 0; }
+    .section-head { justify-content: space-between; gap: 8px; }
+    .label { color: var(--muted); font-size: 11px; font-weight: 650; letter-spacing: .035em; text-transform: uppercase; }
+    .section-title { font-size: 13px; font-weight: 680; }
+    .control, .select { display: block; width: 100%; min-width: 0; height: 36px; padding: 7px 10px; border: 1px solid var(--border); border-radius: 9px; background: var(--input); color: var(--text); }
+    .control::placeholder { color: var(--muted); opacity: .82; }
+    .select-wrap { display: flex; gap: 6px; min-width: 0; }
+    .select-wrap .select { flex: 1; }
+    .segmented { display: grid; grid-template-columns: 1fr 1fr; padding: 3px; border: 1px solid var(--border); border-radius: 10px; background: var(--surface-raised); }
+    .seg-btn { min-height: 34px; border-color: transparent; background: transparent; font-weight: 600; display: flex; align-items: center; justify-content: center; gap: 7px; }
+    .seg-btn.active, .profile-choice.active { color: #fff; background: linear-gradient(135deg, var(--purple), var(--purple-deep)); border-color: #a987ff; box-shadow: 0 4px 14px #7c3aed44; }
+    .options-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 6px; }
+    .check-option { min-width: 0; padding: 7px; border: 1px solid var(--border); background: var(--surface); border-radius: 9px; display: flex; gap: 7px; align-items: flex-start; }
+    .check-option input { accent-color: var(--purple); margin: 2px 0 0; }
+    .check-option span { font-size: 12px; font-weight: 580; }
+    .primary-btn { width: 100%; min-height: 42px; color: white; border-color: #9d78ff; background: linear-gradient(115deg, #965cf9, #7139dd); font-size: 15px; font-weight: 720; box-shadow: 0 7px 19px #7139dd38; }
+    .primary-btn:hover:not(:disabled) { filter: brightness(1.08); }
+    .primary-btn:disabled { background: var(--orca-muted, #424653); border-color: var(--border); color: var(--muted); box-shadow: none; }
+    .status-row { justify-content: space-between; gap: 8px; flex-wrap: wrap; padding-top: 2px; }
+    .inline { gap: 6px; min-width: 0; }
+    .status-text { color: var(--muted); min-width: 0; overflow-wrap: anywhere; font-size: 11px; }
+    .quiet-btn, .outline-btn, .danger-btn { padding: 6px 9px; font-size: 11px; }
+    .quiet-btn { border-color: transparent; background: transparent; color: var(--muted); }
+    .outline-btn { background: var(--surface-raised); }
+    .danger-btn { color: var(--red); border-color: #7b3345; background: #2b1921; }
+    .error-callout { padding: 9px; border-radius: 9px; border: 1px solid #7b3345; color: #ffd6dd; background: #351d29; overflow-wrap: anywhere; }
+    .hidden { display: none !important; }
+    .logs { display: grid; gap: 9px; }
+    .log-card { padding: 9px; min-width: 0; }
+    .log-head { justify-content: space-between; gap: 8px; margin-bottom: 6px; }
+    pre { margin: 0; max-height: 180px; overflow: auto; white-space: pre-wrap; overflow-wrap: anywhere; color: var(--muted); font: 11px/1.45 ui-monospace, SFMono-Regular, Menlo, monospace; }
+    .profile-screen { display: grid; gap: 11px; }
+    .page-heading { display: flex; align-items: center; gap: 9px; padding-bottom: 10px; border-bottom: 1px solid var(--border); }
+    .page-mark { color: #b897ff; font-size: 22px; }
+    .profiles { display: grid; gap: 6px; }
+    .profile-choice { text-align: left; padding: 8px 10px; min-height: 36px; }
+    .profile-choice small { color: var(--muted); display: block; font-size: 10px; margin-top: 2px; }
+    .card { padding: 10px; display: grid; gap: 9px; }
+    .card-head { font-weight: 700; padding-bottom: 6px; border-bottom: 1px solid var(--border); }
+    .field { display: grid; gap: 4px; min-width: 0; }
+    .field label { color: var(--muted); font-size: 11px; }
+    .fields-two { display: grid; grid-template-columns: 1fr 1fr; gap: 7px; }
+    .extra-list { display: grid; gap: 6px; }
+    .extra-row { gap: 5px; min-width: 0; }
+    .extra-row .control, .extra-row .select { min-width: 0; padding-inline: 7px; }
+    .extra-key { flex: 1.3; }
+    .extra-type { flex: 1; }
+    .extra-value { flex: 1; }
+    .button-row { justify-content: space-between; gap: 7px; flex-wrap: wrap; }
+    details.yaml { border: 1px solid var(--border); border-radius: 10px; background: var(--surface); overflow: hidden; }
+    details.yaml summary { padding: 9px 10px; cursor: pointer; font-weight: 650; }
+    details.yaml pre { padding: 10px; border-top: 1px solid var(--border); max-height: 230px; }
+    .hint { color: var(--muted); font-size: 11px; }
+    .toast { min-height: 17px; color: var(--muted); font-size: 11px; }
+    @media (max-width: 340px) {
+      .app { padding: 9px; }
+      .header { margin-bottom: 9px; }
+      .project-card { padding: 8px; }
+      .project-mark { width: 32px; height: 32px; }
+      .options-grid { gap: 4px; }
+      .check-option { padding: 6px 5px; }
+      .status-row { align-items: flex-start; }
+      .status-actions { width: 100%; justify-content: flex-end; }
+    }
+  </style>
+</head>
+<body>
+  <main id="app" class="app" aria-live="polite"></main>
+  <script type="module" src="./panel.js"></script>
+</body>
 </html>

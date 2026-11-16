@@ -36,6 +36,8 @@ interface PanelState {
   buildLogs: string[]
   runLogs: string[]
   agentCount: number | null
+  devicesLoading: boolean
+  projectLoading: boolean
 }
 
 type ProjectPreferences = Pick<PanelState, 'profile' | 'profileName' | 'module' | 'variant' | 'device' | 'install' | 'clearData' | 'activity' | 'uri' | 'launchFlags' | 'extraKey' | 'extraValue' | 'extraType' | 'extras'>
@@ -46,11 +48,27 @@ const state = atom<PanelState>({
   workspaces: [], workspaceId: '', root: '', project: null, devices: [], config: { version: 1 },
   module: '', variant: '', device: '', profile: '', install: true, clearData: false,
   activity: '', uri: '', launchFlags: '', extraKey: '', extraValue: '', extraType: 'boolean', extras: [], profileName: '',
-  running: false, runId: '', status: 'Ready', result: null, showLogs: false, profileScreen: false, buildLogs: [], runLogs: [], agentCount: null
+  running: false, runId: '', status: 'Ready', result: null, showLogs: false, profileScreen: false, buildLogs: [], runLogs: [], agentCount: null, devicesLoading: false, projectLoading: false
 })
 
 let workspaceRefreshGeneration = 0
 let discoveryGeneration = 0
+let deviceGeneration = 0
+
+async function refreshDevices(force = false): Promise<void> {
+  const generation = ++deviceGeneration
+  patchState({ devicesLoading: true })
+  try {
+    const { devices } = await plugin.request('android.devices', { ...(force ? { refresh: true } : {}) })
+    if (generation !== deviceGeneration) return
+    const current = read(state)
+    const online = devices.filter((device) => device.state === 'device')
+    const stillSelected = online.some((device) => device.serial === current.device)
+    patchState({ devices, device: stillSelected ? current.device : online.length === 1 ? online[0].serial : '', devicesLoading: false })
+  } catch {
+    if (generation === deviceGeneration) patchState({ devicesLoading: false })
+  }
+}
 
 function patchState(values: Partial<PanelState>): void {
   const current = read(state)
@@ -78,12 +96,13 @@ async function refreshWorkspaces(preferFocused = false, forceRefresh = false): P
     if (selected) await discover(selected, undefined, forceRefresh)
       else {
         ++discoveryGeneration
-        patchState({ root: '', project: null, devices: [], config: { version: 1 }, device: '', module: '', variant: '', profile: '', status: 'No active project', result: null })
+        patchState({ root: '', project: null, projectLoading: false, config: { version: 1 }, device: '', module: '', variant: '', profile: '', status: 'No active project', result: null })
+        void refreshDevices()
       }
   } catch (error) {
     if (generation !== workspaceRefreshGeneration) return
     const message = (error as Error).message
-    patchState({ root: '', project: null, devices: [], status: message })
+    patchState({ root: '', project: null, projectLoading: false, status: message })
   }
 }
 
@@ -91,7 +110,7 @@ async function discover(workspace: OrcaWorkspace, module?: string, forceRefresh 
   const generation = ++discoveryGeneration
   const preferences = read(projectPreferences)[workspace.path]
   const requestedModule = module ?? preferences?.module
-  patchState({ workspaceId: workspace.id, root: workspace.path, project: null, status: forceRefresh ? 'Refreshing project and devices…' : 'Discovering project…', result: null })
+  patchState({ workspaceId: workspace.id, root: workspace.path, project: null, projectLoading: true, status: forceRefresh ? 'Refreshing project…' : 'Discovering project…', result: null })
   try {
     const { project, devices, config } = await plugin.request('android.discover', { root: workspace.path, ...(requestedModule ? { module: requestedModule } : {}), ...(forceRefresh ? { refresh: true } : {}) }, { timeoutMs: 120_000 })
     if (generation !== discoveryGeneration) return
@@ -101,7 +120,7 @@ async function discover(workspace: OrcaWorkspace, module?: string, forceRefresh 
       ? rememberedProfile && config.profiles?.[rememberedProfile] ? rememberedProfile : rememberedProfile ? config.profile ?? '' : ''
       : config.profile ?? ''
     const profile = resolveConfig(config, profileName)
-    const moduleName = (remembered?.module && project.modules.includes(remembered.module) ? remembered.module : undefined) || profile?.module || project.module
+    const moduleName = (module && project.modules.includes(module) ? module : undefined) || (remembered?.module && project.modules.includes(remembered.module) ? remembered.module : undefined) || profile?.module || project.module
     const base = {
       profile: profileName, profileName, module: moduleName,
       variant: profile?.variant || project.variants.find((value) => value.toLowerCase() === 'debug') || project.variants[0] || '',
@@ -113,10 +132,10 @@ async function discover(workspace: OrcaWorkspace, module?: string, forceRefresh 
     const validProfile = restored.profile && config.profiles?.[restored.profile] ? restored.profile : profileName
     patchState({
       ...restored, profile: validProfile, profileName: remembered?.profileName ?? validProfile,
-      root: project.root, project, devices, config,
+      root: project.root, project, devices, config, projectLoading: false,
       variant: project.variants.includes(restored.variant) ? restored.variant : base.variant,
-      device: devices.some((device) => device.serial === restored.device) ? restored.device : base.device,
-      status: project.supported ? (devices.length ? 'Ready' : 'No connected device') : (project.reason ?? 'Unsupported project'),
+      device: devices.some((device) => device.serial === restored.device && device.state === 'device') ? restored.device : (devices.filter((device) => device.state === 'device').length === 1 ? devices.find((device) => device.state === 'device')?.serial ?? '' : ''),
+      status: project.supported ? (devices.some((device) => device.state === 'device') ? 'Ready' : 'No online device') : (project.reason ?? 'Unsupported project'),
     })
     if (!remembered && project.supported) {
       const initialPreferences = { ...restored, profile: validProfile, profileName: validProfile }
@@ -125,7 +144,7 @@ async function discover(workspace: OrcaWorkspace, module?: string, forceRefresh 
   } catch (error) {
     if (generation !== discoveryGeneration) return
     const message = (error as Error).message
-    patchState({ project: null, devices: [], device: '', status: message })
+    patchState({ project: null, projectLoading: false, status: message })
   }
 }
 
@@ -283,6 +302,7 @@ export function setup(ctx: PanelContext): void {
     })
   }))
   void refreshAgentCount()
+  void refreshDevices()
   void host.call('events.subscribe', { event: 'workspace.changed' }).then(() => {
     ctx.subscriptions.push(on('workspace.changed', () => { void refreshWorkspaces(true); void refreshAgentCount() }))
   }).catch(() => undefined)
@@ -316,16 +336,19 @@ export default function Panel() {
   const variants = project?.variants ?? []
   const debugVariant = variants.find((variant) => variant.toLowerCase() === 'debug')
   const releaseVariant = variants.find((variant) => variant.toLowerCase() === 'release')
-  const debugChoice = debugVariant ?? (!project?.supported ? 'Debug' : undefined)
-  const releaseChoice = releaseVariant ?? (!project?.supported ? 'Release' : undefined)
+  const debugChoice = debugVariant
+  const releaseChoice = releaseVariant
   const extraVariants = variants.filter((variant) => variant !== debugVariant && variant !== releaseVariant)
   const busy = value.running
   const savedProfile = value.profile ? value.config.profiles?.[value.profile] : undefined
   const segmentValue = value.variant.toLowerCase() === (releaseVariant ?? 'Release').toLowerCase() ? 'release' : 'debug'
-  const statusBadge = busy ? 'Running' : value.result?.status === 'success' ? 'Success' : value.result?.status === 'failed' ? 'Failed' : value.result?.status === 'cancelled' ? 'Cancelled' : !project?.supported ? 'Not ready' : value.devices.length ? 'Ready' : 'No device'
+  const onlineDevices = value.devices.filter((device) => device.state === 'device')
   const deviceOptions = value.devices.length
-    ? value.devices.map((device) => ({ value: device.serial, label: `${device.model} · ${device.serial}` }))
-    : [{ value: 'no-device', label: 'No connected devices', disabled: true }]
+    ? value.devices.map((device) => ({ value: device.serial, label: `${device.model} · ${device.serial}${device.state !== 'device' ? ` (${device.state})` : ''}`, disabled: device.state !== 'device' }))
+    : [{ value: 'no-device', label: value.devicesLoading ? 'Searching for devices…' : 'No ADB devices found', disabled: true }]
+  const runDisabled = busy || value.projectLoading || !project?.supported || !onlineDevices.some((device) => device.serial === value.device) || !value.variant
+  const runReason = value.projectLoading ? 'Detecting Android project…' : !project?.supported ? project?.reason ?? 'No Android application module detected in the focused project.' : !onlineDevices.length ? value.devices.some((device) => device.state === 'unauthorized') ? 'Authorize USB debugging on the device.' : value.devices.some((device) => device.state === 'offline') ? 'Reconnect the offline device.' : 'Connect a device or start an emulator.' : !value.device ? 'Select an online device.' : !value.variant ? 'Select an available build variant.' : ''
+  const operationMessage = busy ? value.status : value.result?.error?.message ?? (value.result?.status === 'success' ? 'Run completed' : value.result?.status === 'cancelled' ? 'Operation cancelled' : runDisabled ? runReason : 'Ready to run')
   if (value.profileScreen) return (
     <Stack gap="xs">
       <Row justify="between" align="center">
@@ -359,19 +382,20 @@ export default function Panel() {
         <IconButton icon="settings" label="Open Profile manager" tooltip="Profile manager" variant="ghost" size="xs" disabled={busy} onPress={() => patchState({ profileScreen: true })} />
       </Row>
       <Row justify="between" align="center" gap="xs">
-        <Text size="xs" muted truncate>{project?.supported ? `${(value.module || project.module || 'Module').replace(/^:/, '').replace(/:/g, ' · ')} · ${project.applicationId ?? 'applicationId not detected'}` : 'No active project'}</Text>
+        <Text size="xs" muted truncate>{project?.supported ? `${(value.module || project.module || 'Module').replace(/^:/, '').replace(/:/g, ' · ')} · ${project.applicationId ?? 'applicationId not detected'}` : value.projectLoading ? 'Detecting Android project…' : value.root ? 'No Android application module detected' : 'No active project'}</Text>
         <Row gap="xs" align="center">
-          <Badge tone={project?.supported ? 'success' : 'warning'}>{project?.supported ? 'Recognized' : 'Not recognized'}</Badge>
-          <IconButton icon="refresh" label="Refresh project and devices" tooltip="Refresh" variant="ghost" size="xs" disabled={busy} onPress={() => void refreshWorkspaces(false, true)} />
+          <Badge tone={project?.supported ? 'success' : value.projectLoading ? 'accent' : 'warning'}>{project?.supported ? 'Project ready' : value.projectLoading ? 'Detecting project' : 'Project not recognized'}</Badge>
+          <IconButton icon="refresh" label="Refresh project and devices" tooltip="Refresh project and devices" variant="ghost" size="xs" disabled={busy} onPress={() => void refreshWorkspaces(false, true)} />
         </Row>
       </Row>
-      {unsupported && <Text muted size="xs">{project?.reason ?? 'Open an Android project workspace to enable Run.'}</Text>}
-        <Select label="Device" value={value.device || (value.devices.length ? '' : 'no-device')} placeholder="Select device" options={deviceOptions} disabled={busy || unsupported || !value.devices.length} onChange={(device) => patchState({ device })} />
+      {project?.supported && project.modules.length > 1 && <Select label="App module" value={value.module} options={project.modules.map((module) => ({ value: module, label: module.replace(/^:/, '').replace(/:/g, ' · ') }))} disabled={busy} onChange={(module) => { const workspace = value.workspaces.find((item) => item.id === value.workspaceId); if (workspace) void discover(workspace, module) }} />}
+        <Row align="end" gap="xs"><Select label="Device" value={value.device || (value.devices.length ? '' : 'no-device')} placeholder="Select device" options={deviceOptions} disabled={busy || !onlineDevices.length} onChange={(device) => patchState({ device })} /><IconButton icon="refresh" label="Refresh devices" tooltip="Refresh devices" variant="ghost" size="xs" disabled={busy || value.devicesLoading} onPress={() => void refreshDevices(true)} /></Row>
+      {value.devices.some((device) => device.state !== 'device') && <Text muted size="xs">{value.devices.filter((device) => device.state !== 'device').map((device) => `${device.model}: ${device.state === 'unauthorized' ? 'authorize USB debugging' : 'reconnect device'}`).join(' · ')}</Text>}
         <Stack gap="xs">
           <Text size="xs" muted>Variant</Text>
           <Grid columns={2} gap="xs">
-            <Button variant={segmentValue === 'debug' ? 'solid' : 'ghost'} tone="neutral" disabled={!debugChoice || busy} onPress={() => debugChoice && patchState({ variant: debugChoice })}>Debug</Button>
-            <Button variant={segmentValue === 'release' ? 'solid' : 'ghost'} tone="neutral" disabled={!releaseChoice || busy} onPress={() => releaseChoice && patchState({ variant: releaseChoice })}>Release</Button>
+            <Button variant={segmentValue === 'debug' ? 'solid' : 'ghost'} tone="neutral" disabled={!debugChoice || busy || unsupported} onPress={() => debugChoice && patchState({ variant: debugChoice })}>Debug</Button>
+            <Button variant={segmentValue === 'release' ? 'solid' : 'ghost'} tone="neutral" disabled={!releaseChoice || busy || unsupported} onPress={() => releaseChoice && patchState({ variant: releaseChoice })}>Release</Button>
           </Grid>
           {extraVariants.length > 0 && <Select label="Other variant" labelHidden value={extraVariants.includes(value.variant) ? value.variant : ''} placeholder="Other variant…" options={extraVariants.map((variant) => ({ value: variant, label: variant }))} disabled={busy || unsupported} onChange={(variant) => patchState({ variant })} />}
         </Stack>
@@ -379,10 +403,10 @@ export default function Panel() {
         <Checkbox label="Install APK" checked={value.install} disabled={busy || unsupported} onChange={(install) => patchState({ install })} />
         <Checkbox label="Clear App Data" checked={value.clearData} disabled={busy || unsupported} onChange={(clearData) => patchState({ clearData })} />
       <Grid columns={1} gap="none">
-        <Button size="md" variant="solid" tone="accent" icon={busy ? 'stop' : 'play'} disabled={unsupported || (!value.device && !busy)} onPress={() => busy ? void cancelRun() : void startRun()}>{busy ? 'Cancel Run' : 'Run'}</Button>
+        <Button size="md" variant="solid" tone="accent" icon={busy ? 'stop' : 'play'} disabled={!busy && runDisabled} tooltip={!busy && runDisabled ? runReason : undefined} onPress={() => busy ? void cancelRun() : void startRun()}>{busy ? 'Cancel Run' : 'Run'}</Button>
       </Grid>
       <Row justify="between" align="center">
-        <Row gap="xs" align="center"><Badge tone={value.result?.status === 'success' ? 'success' : value.result?.status === 'failed' ? 'danger' : busy ? 'accent' : !project?.supported || !value.devices.length ? 'warning' : 'neutral'}>{statusBadge}</Badge><Text size="xs" muted truncate>{value.status}</Text></Row>
+        <Row gap="xs" align="center"><Badge tone={busy ? 'accent' : value.result?.status === 'failed' ? 'danger' : value.result?.status === 'success' ? 'success' : 'neutral'}>{busy ? 'Running' : value.result?.status === 'success' ? 'Success' : value.result?.status === 'failed' ? 'Failed' : value.result?.status === 'cancelled' ? 'Cancelled' : 'Idle'}</Badge><Text size="xs" muted>{operationMessage}</Text></Row>
         <Row gap="xs" align="center">
           <Button size="xs" variant="ghost" onPress={() => patchState({ showLogs: !value.showLogs })}>{value.showLogs ? 'Hide logs' : 'Show logs'}</Button>
           <Button size="xs" variant="ghost" disabled={!value.buildLogs.length && !value.runLogs.length} onPress={() => patchState({ buildLogs: [], runLogs: [], result: null })}>Clear log</Button>

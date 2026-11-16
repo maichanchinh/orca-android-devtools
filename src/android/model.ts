@@ -28,6 +28,7 @@ export interface AndroidDevice {
 
 export interface AndroidProject {
   root: string
+  rootProjectName?: string
   module: string
   modules: string[]
   variants: string[]

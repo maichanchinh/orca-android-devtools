@@ -122,10 +122,12 @@ function selectDevice(devices: AndroidDevice[], requested: string): AndroidDevic
   if (requested) {
     const device = devices.find(({ serial }) => serial === requested)
     if (!device) throw Object.assign(new Error(`Selected device is not connected: ${requested}`), { code: 'device_not_found' })
+    if (device.state !== 'device') throw Object.assign(new Error(device.state === 'unauthorized' ? `Authorize USB debugging for device ${device.serial}` : `Device ${device.serial} is ${device.state}`), { code: device.state === 'unauthorized' ? 'device_unauthorized' : 'device_offline' })
     return device
   }
-  if (devices.length !== 1) throw Object.assign(new Error(devices.length ? 'Select a device; multiple Android devices are connected' : 'No connected Android device found'), { code: devices.length ? 'device_ambiguous' : 'device_unavailable' })
-  return devices[0]
+  const online = devices.filter(({ state }) => state === 'device')
+  if (online.length !== 1) throw Object.assign(new Error(online.length ? 'Select a device; multiple Android devices are connected' : 'No online Android device found'), { code: online.length ? 'device_ambiguous' : 'device_unavailable' })
+  return online[0]
 }
 
 async function acquire(keys: string[], signal: AbortSignal): Promise<() => void> {

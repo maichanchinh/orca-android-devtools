@@ -26,6 +26,10 @@ export async function readProjectConfig(root: string): Promise<ProjectConfig> {
 }
 
 export async function saveProfile(root: string, name: string, profile: Profile): Promise<void> {
+  await writeFile(join(root, CONFIG_FILE), await previewProfileYaml(root, name, profile), 'utf8')
+}
+
+export async function previewProfileYaml(root: string, name: string, profile: Profile): Promise<string> {
   if (!/^[a-zA-Z0-9][a-zA-Z0-9 _.-]{0,63}$/.test(name)) throw new Error('Profile name must be 1–64 safe characters')
   validateProfile(profile)
   const config = await readProjectConfig(root)
@@ -33,7 +37,7 @@ export async function saveProfile(root: string, name: string, profile: Profile):
   const sparse = Object.fromEntries(Object.entries(profile).filter(([key, value]) => value !== defaults[key as keyof typeof defaults] && value !== undefined)) as Profile
   config.profiles = { ...config.profiles, [name]: sparse }
   config.profile = name
-  await writeFile(join(root, CONFIG_FILE), serializeYaml(config), 'utf8')
+  return serializeYaml(config)
 }
 
 export async function deleteProfile(root: string, name: string): Promise<boolean> {

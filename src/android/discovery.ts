@@ -20,19 +20,31 @@ export async function findProjectRoot(start: string): Promise<string | null> {
 export async function discoverProject(start: string, requestedModule?: string): Promise<AndroidProject> {
   const root = await findProjectRoot(start)
   if (!root) return { root: resolve(start), module: '', modules: [], variants: [], gradleWrapper: '', androidCli: false, supported: false, reason: 'No Gradle Android project found' }
+  const rootProjectName = await readRootProjectName(root)
   const gradleWrapper = process.platform === 'win32' ? join(root, 'gradlew.bat') : join(root, 'gradlew')
-  if (!(await exists(gradleWrapper))) return { root, module: '', modules: [], variants: [], gradleWrapper: '', androidCli: false, supported: false, reason: 'Gradle wrapper not found' }
+  if (!(await exists(gradleWrapper))) return { root, ...(rootProjectName ? { rootProjectName } : {}), module: '', modules: [], variants: [], gradleWrapper: '', androidCli: false, supported: false, reason: 'Gradle wrapper not found' }
 
   const modules = await discoverModules(root)
   const androidModules = modules.filter((module) => moduleHasAndroidMarkers(root, module))
   const module = requestedModule ?? (androidModules.includes(':app') ? ':app' : androidModules.length === 1 ? androidModules[0] : '')
   if (!module || !androidModules.includes(module)) {
-    return { root, module, modules: androidModules, variants: [], gradleWrapper, androidCli: false, supported: false, reason: androidModules.length ? 'Select an Android application module' : 'No Android application module detected' }
+    return { root, ...(rootProjectName ? { rootProjectName } : {}), module, modules: androidModules, variants: [], gradleWrapper, androidCli: false, supported: false, reason: androidModules.length ? 'Select an Android application module' : 'No Android application module detected' }
   }
 
   const { variants, androidCli } = await discoverVariants(root, module)
   const applicationId = await discoverApplicationId(root, module)
-  return { root, module, modules: androidModules, variants, ...(applicationId ? { applicationId } : {}), gradleWrapper, androidCli, supported: variants.length > 0, ...(variants.length ? {} : { reason: 'Could not discover build variants' }) }
+  return { root, ...(rootProjectName ? { rootProjectName } : {}), module, modules: androidModules, variants, ...(applicationId ? { applicationId } : {}), gradleWrapper, androidCli, supported: variants.length > 0, ...(variants.length ? {} : { reason: 'Could not discover build variants' }) }
+}
+
+export async function readRootProjectName(root: string): Promise<string | undefined> {
+  for (const filename of ['settings.gradle.kts', 'settings.gradle']) {
+    try {
+      const source = await readFile(join(root, filename), 'utf8')
+      const match = source.match(/^\s*rootProject\.name\s*=\s*(["'])(.*?)\1\s*(?:\/\/.*)?$/m)
+      if (match?.[2]?.trim()) return match[2].trim()
+    } catch { /* Try the other settings file or fall back to the workspace name. */ }
+  }
+  return undefined
 }
 
 async function discoverApplicationId(root: string, module: string): Promise<string | undefined> {
@@ -160,9 +172,13 @@ function metadataFiles(output: string, root: string): string[] {
 export async function discoverDevices(cwd: string): Promise<AndroidDevice[]> {
   const result = await runCommand('adb', ['devices', '-l'], cwd, undefined, 10_000)
   if (result.exitCode !== 0) return []
-  return result.stdout.split(/\r?\n/).slice(1).flatMap((line) => {
+  return parseAdbDevices(result.stdout)
+}
+
+export function parseAdbDevices(output: string): AndroidDevice[] {
+  return output.split(/\r?\n/).slice(1).flatMap((line) => {
     const fields = line.trim().match(/^(\S+)\s+(\S+)(?:\s+(.*))?$/)
-    if (!fields || fields[2] !== 'device') return []
+    if (!fields || !['device', 'offline', 'unauthorized'].includes(fields[2])) return []
     const model = fields[3]?.match(/(?:^|\s)model:(\S+)/)?.[1]
     return [{ serial: fields[1], state: fields[2], model: model?.replace(/_/g, ' ') ?? fields[1] }]
   })
