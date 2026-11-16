@@ -2,8 +2,20 @@
   "manifestVersion": 2,
   "id": "android-devtools",
   "name": "Android Devtools",
-  "version": "0.1.0",
+  "version": "1.0.0",
   "description": "Run Android Gradle variants on connected devices from Orca or the Node CLI.",
+  "cover": {
+    "path": "cover.jpg",
+    "alt": "Generated dark green Android Devtools promotional artwork with a phone mockup and an Android build and run panel"
+  },
+  "screenshots": [
+    {
+      "path": "screenshots/android-devtools-dark.png",
+      "alt": "Android Devtools panel preview showing a detected sample Android project, connected Pixel device, Debug and Release choices, and Run button",
+      "caption": "Panel preview with a sample project and connected device",
+      "theme": "dark"
+    }
+  ],
   "engines": {
     "orca": ">=1.4.246"
   },
