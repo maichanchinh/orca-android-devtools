@@ -1,15 +1,28 @@
-// The panel <-> worker contract, declared once: src/panel.tsx and src/worker.ts both read it.
-export {}
+import type { AndroidDevice, AndroidProject, Profile, ProjectConfig, RunOptions, RunResult } from './android/model.ts'
+
+export interface OrcaWorkspace {
+  id: string
+  kind: 'worktree' | 'folder'
+  name: string
+  path: string
+  hostId?: string | null
+}
 
 declare module 'orca' {
   interface PluginRequests {
-    /** The total the worker keeps in storage. */
-    'counter.get': { output: { total: number } }
-    /** Adds `by` to the stored total and answers the new total. */
-    'counter.add': { input: { by: number }; output: { total: number } }
+    'android.workspaces': { output: { workspaces: OrcaWorkspace[]; focusedId: string | null; focusedName: string | null } }
+    'android.discover': { input: { root: string; module?: string; refresh?: boolean }; output: { project: AndroidProject; devices: AndroidDevice[]; config: ProjectConfig } }
+    'android.profile.save': { input: { root: string; name: string; profile: Profile }; output: { ok: true } }
+    'android.profile.delete': { input: { root: string; name: string }; output: { ok: true; deleted: boolean } }
+    'android.run.start': { input: { root: string; profile?: string; options: Partial<RunOptions> }; output: { runId: string } }
+    'android.run.cancel': { input: { runId: string }; output: { cancelled: boolean } }
+    'android.run.result': { input: { runId: string }; output: { result: RunResult | null } }
+    'android.agent.status': { output: { count: number } }
+    'android.agent.sendLog': { input: { text: string }; output: { accepted: true } }
   }
   interface PluginPanelEvents {
-    /** Posted to every open panel after the total changes. */
-    'counter.changed': { total: number }
+    'android.run.changed': { runId: string; status: string; result?: RunResult }
+    'android.run.progress': { runId: string; stage: 'build' | 'install' | 'launch' | 'status' | 'error'; message: string }
+    'android.log': { message: string; at: number }
   }
 }

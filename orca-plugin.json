@@ -3,7 +3,7 @@
   "id": "android-devtools",
   "name": "Android Devtools",
   "version": "0.1.0",
-  "description": "A sidebar panel and the worker that answers it.",
+  "description": "Run Android Gradle variants on connected devices from Orca or the Node CLI.",
   "engines": {
     "orca": ">=1.4.246"
   },
@@ -19,9 +19,25 @@
         "entry": "src/panel.tsx",
         "ui": "components"
       }
+    ],
+    "commands": [
+      {
+        "id": "android-devtools.run",
+        "title": "Android Devtools: Run Selected Project",
+        "when": "workspace"
+      }
     ]
   },
   "capabilities": [
+    {
+      "kind": "workspace:read"
+    },
+    {
+      "kind": "agent:read"
+    },
+    {
+      "kind": "terminal:send"
+    },
     {
       "kind": "storage:own"
     }

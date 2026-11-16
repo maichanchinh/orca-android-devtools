@@ -1,14 +1,58 @@
 # Android Devtools
 
-A right-sidebar panel (`src/panel.tsx`) and the plugin's own worker (`src/worker.ts`). The panel asks with `plugin.request`, the worker answers with `orca.panels.handle`, keeps the total in `orca.storage` and tells every open panel with `orca.panels.post`; `src/protocol.ts` types both sides. Orca transpiles both files when they load, so there is no build step: save and the panel or worker reloads (a worker reload drops its in-memory state, so keep what must last in storage). `orca plugin test .` runs `src/panel.test.tsx` and `src/worker.test.ts` in Node with `orca/testing`, and `orca plugin check .` renders the panel with the worker in each `src/panel.check.ts` scenario; `npx tsc -p .` type-checks against the typings `orca plugin types .` writes to `.orca/types/`. With the folder loaded, `orca plugin dev request . counter.add --data '{"by":1}'` calls the worker as the panel does.
+Compact Android run configuration panel for Orca. The panel, Orca command and standalone CLI share the resolver and runner in `src/android/`.
 
-## Develop
+## Run in Orca
+
+Open **Android Devtools** from the right sidebar. It follows the focused Orca workspace automatically; choose a device and variant, configure install options, then press **Run**. The panel always builds before running. Variant buttons remain selectable while project detection is unavailable, but Run stays disabled until an Android project is recognized. Release builds use the machine's default Android debug keystore for local device testing; this key is not suitable for publishing. Project discovery metadata is cached per project/module until **Refresh**; device discovery is cached for 30 seconds. Use **Refresh** after connecting a device or changing project build files. YAML is reread on every discovery. Panel selections are remembered independently for each project and are not written to YAML unless a profile is saved. Profiles are saved to `.android-devtools.yaml` in the project root, and a missing file uses defaults; open **Profile manager** from the panel header to edit them.
+
+The Command Palette command **Android Devtools: Run Selected Project** runs the focused project. For device selection or Intent extras, use the panel or pass options to the standalone CLI.
+
+## Standalone CLI
+
+Requires Node.js 22+ and the Android SDK tools. It has no npm dependencies:
 
 ```sh
-orca plugin validate .
-orca plugin dev watch .    # loads this folder into Orca and prints its logs and reloads; Ctrl-C unloads it
+node src/cli.ts discover --project /path/to/android-project
+node src/cli.ts run --project /path/to/android-project --module :app --variant debug --device emulator-5554
+node src/cli.ts run --profile premium-ads --extra debug_premium_ads:boolean=true
+node src/cli.ts profile list --project /path/to/android-project
+node src/cli.ts profile save --project /path/to/android-project --name premium-ads --module :app --variant Debug
+node src/cli.ts profile delete --project /path/to/android-project --name premium-ads
 ```
 
-Orca names the publisher after where the plugin is installed from: the GitHub or GitLab owner of
-its repository, or `local` for a folder. See
-https://github.com/stablyai/orca/blob/main/docs/reference/plugin-authoring.md.
+Supported options include `--uri`, `--no-build`, `--no-install`, `--clear-data`, `--activity`, `--timeout` (milliseconds), and repeated `--extra key:type=value`. Extra types: `string`, `boolean`, `int`, `long`, `float`, `double`. Live build/run progress is written to stderr; the final result remains one JSON object on stdout. Failures include a stable error code and relevant output.
+
+Set `ANDROID_DEVTOOLS_DEBUG=1` in the Orca process environment to include detailed discovery cache diagnostics in `orca plugin logs local.android-devtools`. High-level discovery, profile and run outcomes are always logged. The panel's log area starts hidden and separates build output from install/launch output. Each section can be copied or inserted into the sole agent terminal in the focused workspace; insertion does not submit the prompt. **Clear log** empties both sections.
+
+## Configuration
+
+Only non-default profile values need to be stored. Profiles and project overrides use this shape:
+
+```yaml
+version: 1
+profile: premium-ads
+profiles:
+  premium-ads:
+    uri: "blurface://premium?source=debug"
+    extras:
+      - key: debug_premium_ads
+        type: boolean
+        value: true
+overrides:
+  module: ":app"
+```
+
+Precedence is selected profile, project overrides, then current-run UI or CLI values. `uri` maps to Android Intent data (`-d`); extras map to typed Intent arguments such as `--ez debug_premium_ads true`. The separate **Profile manager** screen edits these values and saves them to YAML. SDK paths are not written. `android describe` discovers project metadata when supported; otherwise the Gradle wrapper discovers variants. Builds always use the Gradle wrapper. Android CLI installs APKs when supported, with ADB fallback. ADB handles exact package clearing and typed Intent launch because `android run` has no Intent-extra options.
+
+## Development and validation
+
+Orca loads `.ts` and `.tsx` directly; no bundling step or runtime dependency installation is needed. Generate host typings with `orca plugin types .`, then run:
+
+```sh
+tsc -p .
+orca plugin validate . --json
+orca plugin check . --json
+```
+
+The plugin uses Orca's trusted-worker profile with `workspace:read`, `agent:read`, `terminal:send` and `storage:own`. Storage keeps per-project discovery metadata across worker restarts until Refresh; it does not cache project YAML. Gradle and ADB execute with argument arrays, no shell. Runs are serialized by workspace and device, cancellable, and leave incremental build caches intact.
